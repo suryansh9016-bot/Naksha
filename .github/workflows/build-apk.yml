@@ -1,5 +1,7 @@
 name: Build Naksha APK
 on: [push]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,10 +14,10 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           
-      - name: Set up Node 22
+      - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           
       - name: Install pnpm
         uses: pnpm/action-setup@v3
@@ -31,21 +33,22 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Setup & Sync Capacitor
+      - name: Force Native Bridge, Permissions & Icons
         run: |
+          # Added capacitor/assets to the installation list
           pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
-          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences \
-          @capacitor/assets
+          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences @capacitor/assets
           
           rm -rf android
           npx cap add android
           
-          # FIX: New command for icons (removed the broken --icon flag)
-          if [ -f "icon-only.png" ]; then
-            npx capacitor-assets generate --android
+          # BRANDING: The "Missing" Icon Step
+          ICON_PATH=$(find . -name "icon-only.png" | head -n 1)
+          if [ -f "$ICON_PATH" ]; then
+            npx capacitor-assets generate --android --icon "$ICON_PATH"
           fi
           
-          # MANIFEST SURGERY
+          # Injecting the "Master Key" permissions for Android 14
           MANIFEST=$(find android -name "AndroidManifest.xml" | grep "main")
           sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
@@ -54,9 +57,8 @@ jobs:
           
           npx cap sync android
         
-      - name: Build debug APK (The Ultimate Hunt)
+      - name: Build debug APK
         run: |
-          # Finding the gradlew file wherever it exists
           GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$GRADLE_PATH"
           chmod +x gradlew
