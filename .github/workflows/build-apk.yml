@@ -24,34 +24,37 @@ jobs:
           
       - name: Build frontend
         run: |
+          # Finds package.json anywhere and builds the web files
           FRONTEND_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$FRONTEND_PATH"
           pnpm install
           pnpm build
+          # Forces a top-level www folder for Capacitor to find
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Setup Capacitor
+      - name: Setup & Sync Capacitor
         run: |
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
-          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
-          
-      - name: Sync Android Project
-        run: |
-          # Since the folder already exists, we just sync the new web code into it
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android
+          # Syncs the web files we just built into the native project
           npx cap sync android
         
-      - name: Build debug APK
+      - name: Build debug APK (The Ultimate Fix)
         run: |
-          # Find the gradlew file and kick off the build
+          # 1. Hunt down the gradlew file
           GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
+          echo "Found Android engine at: $GRADLE_PATH"
+          
+          # 2. Navigate and execute
           cd "$GRADLE_PATH"
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           
-      - name: Upload APK artifact
+      - name: Upload APK artifact (Fail-Proof)
         uses: actions/upload-artifact@v4
         with:
           name: naksha-apk
+          # The double asterisk (**) tells GitHub to search every single folder for the APK
           path: "**/app-debug.apk"
           retention-days: 7
+          if-no-files-found: error
