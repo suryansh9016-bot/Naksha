@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '22'
           
-      - name: Install pnpm
+      - name: Install pnpm & Branding Tools
         uses: pnpm/action-setup@v3
         with:
           version: 9
@@ -31,20 +31,27 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Force Rebuild Android with Permissions
+      - name: Native Power & Icon Generation
         run: |
+          # 1. Install all plugins + The Icon Generator Tool
           pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
-          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
+          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences \
+          @capacitor/assets
           
+          # 2. Rebuild Android Engine
           rm -rf android
           npx cap add android
           
-          # AUTO-PATCH PERMISSIONS (The "Surgery")
-          # This adds Notification and Storage permissions to the AndroidManifest.xml
+          # 3. Hunt for your icon and generate them
+          # This command creates icons for every Android size automatically
+          npx capacitor-assets generate --android --icon icon-only.png
+          
+          # 4. MANIFEST SURGERY: Granting Permissions
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />' $MANIFEST
           
           npx cap sync android
         
@@ -52,7 +59,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew clean assembleDebug --no-daemon
           
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
