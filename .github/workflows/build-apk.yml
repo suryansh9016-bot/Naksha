@@ -18,17 +18,32 @@ jobs:
         uses: pnpm/action-setup@v3
         with:
           version: 8
-      - name: Build frontend
+      - name: Build frontend (src/frontend)
         run: |
+          cd src/frontend
           pnpm install
           pnpm build
-          mkdir -p www
-          cp -r dist/* www/
-      - name: Install Capacitor & sync
+          mkdir -p $GITHUB_WORKSPACE/www
+          cp -r dist/* $GITHUB_WORKSPACE/www/
+      - name: Install Capacitor dependencies
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android \
           @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
-          npx cap sync android
+      - name: Add Android platform if missing
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+      - name: Sync Capacitor
+        run: npx cap sync android
+      - name: Generate Icons
+        run: |
+          if [ -f "assets/icon-only.png" ]; then
+            npm install @capacitor/assets
+            npx capacitor-assets generate --iconBackgroundColor '#0f0f1a' --iconBackgroundColorDark '#0f0f1a' --android
+          else
+            echo "No icon file found at assets/icon-only.png, skipping icon generation"
+          fi
       - name: Build debug APK
         run: |
           cd android
@@ -40,3 +55,4 @@ jobs:
           name: naksha-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+          
