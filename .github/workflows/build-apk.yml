@@ -1,7 +1,5 @@
 name: Build Naksha Native-Hybrid APK
 on: [push]
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,8 +10,12 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 9
       - name: Build Frontend
@@ -24,39 +26,34 @@ jobs:
           pnpm build
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
-      - name: Kotlin Bridge & API 34 Surgery
+      - name: Kotlin Native Bridge Construction
         run: |
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android @capacitor/filesystem @capacitor/local-notifications
+          pnpm add -w @capacitor/cli@latest @capacitor/core@latest @capacitor/android@latest @capacitor/filesystem@latest
           rm -rf android
           npx cap add android
           
-          # 1. NATIVE MANIFEST UPGRADE (API 34)
+          # Manifest & Permission Injection
           MANIFEST=$(find android -name "AndroidManifest.xml" | grep "main")
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
           
-          # 2. CONVERT JAVA TO KOTLIN BRIDGE
+          # Convert Java to Kotlin Bridge
           JAVA_FILE=$(find android -name "MainActivity.java")
           KOTLIN_DIR=$(dirname "$JAVA_FILE")
           PACKAGE_NAME=$(grep "package" "$JAVA_FILE" | head -n 1)
-          
           cat <<EOF > "$KOTLIN_DIR/MainActivity.kt"
           ${PACKAGE_NAME/;/}
           import android.os.Bundle
           import com.getcapacitor.BridgeActivity
-
           class MainActivity : BridgeActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
               }
           }
           EOF
-          rm "$JAVA_FILE" # Remove the old Java bridge
-          
+          rm "$JAVA_FILE"
           npx cap sync android
-      - name: Build Gradle 8.0+ APK
+      - name: Build Final APK
         run: |
           GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$GRADLE_PATH"
@@ -65,5 +62,5 @@ jobs:
       - name: Upload Native APK
         uses: actions/upload-artifact@v4
         with:
-          name: naksha-native-hybrid
+          name: naksha-final-native
           path: "**/app-debug.apk"
