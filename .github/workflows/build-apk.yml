@@ -1,49 +1,56 @@
 name: Build Naksha APK
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 8
-      - name: Build frontend
+
+      - name: Build frontend (src/frontend)
         run: |
+          cd src/frontend
           pnpm install
           pnpm build
-          mkdir -p www
-          cp -r dist/* www/ || cp -r build/* www/
-      - name: Install Capacitor & Sync
+          mkdir -p $GITHUB_WORKSPACE/www
+          cp -r dist/* $GITHUB_WORKSPACE/www/
+
+      - name: Install Capacitor dependencies
         run: |
-          npm install @capacitor/cli @capacitor/core @capacitor/android
+          npm install @capacitor/cli @capacitor/core @capacitor/android \
+            @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
+
+      - name: Add Android platform if missing
+        run: |
           if [ ! -d "android" ]; then
             npx cap add android
           fi
-          npx cap sync android
-      - name: Generate Icons
-        run: |
-          if [ -f "assets/icon-only.png" ]; then
-            npm install @capacitor/assets
-            npx capacitor-assets generate --icon --android
-          else
-            echo "Skipping icons: file not found"
-          fi
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
       - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
