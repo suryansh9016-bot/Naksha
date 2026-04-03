@@ -30,24 +30,24 @@ jobs:
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
       - name: Force God-Mode & Icon Injection
         run: |
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android @capacitor/filesystem
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android @capacitor/filesystem @capacitor/local-notifications
           
           rm -rf android
           npx cap add android
           
-          # SEARCH AND DESTROY: Find the icon and force it into Android
+          # ICON INJECTION
           ICON_PATH=$(find . -name "icon-only.png" | head -n 1)
           if [ -n "$ICON_PATH" ]; then
-            echo "Icon found at $ICON_PATH. Injecting..."
             mkdir -p android/app/src/main/res/mipmap-mdpi
             cp "$ICON_PATH" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           fi
           
-          # MANIFEST SURGERY: All Files Access Key
+          # MANIFEST SURGERY: Storage + Notifications
           MANIFEST=$(find android -name "AndroidManifest.xml" | grep "main")
           sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
           sed -i 's/<application/<application android:requestLegacyExternalStorage="true"/' $MANIFEST
           
           npx cap sync android
