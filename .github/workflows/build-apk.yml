@@ -31,23 +31,25 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Force Rebuild Android Platform
+      - name: Force Rebuild Android with Permissions
         run: |
-          # 1. Install CLI
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
+          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
           
-          # 2. If 'android' folder exists, remove it to ensure a clean engine
           rm -rf android
-          
-          # 3. Create a FRESH android project with your package details
           npx cap add android
           
-          # 4. Sync the web files
+          # AUTO-PATCH PERMISSIONS (The "Surgery")
+          # This adds Notification and Storage permissions to the AndroidManifest.xml
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' $MANIFEST
+          
           npx cap sync android
         
       - name: Build debug APK
         run: |
-          # Now that we forced the creation, 'android' is guaranteed to be in the root
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
