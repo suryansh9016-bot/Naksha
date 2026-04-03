@@ -24,33 +24,28 @@ jobs:
           
       - name: Build frontend
         run: |
-          # 1. Find your project folder
           FRONTEND_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$FRONTEND_PATH"
-          
-          # 2. Install and build
           pnpm install
           pnpm build
-          
-          # 3. Standardize the output for Capacitor
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Create Android Engine
+      - name: Setup Capacitor
         run: |
-          # Install Capacitor tools globally in the runner
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
+          @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
           
-          # Create the android folder because it's missing
-          npx cap add android
-          
-          # Sync the files we just built in the previous step
+      - name: Sync Android Project
+        run: |
+          # Since the folder already exists, we just sync the new web code into it
           npx cap sync android
         
       - name: Build debug APK
         run: |
-          # Navigate into the newly created folder
-          cd android
+          # Find the gradlew file and kick off the build
+          GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
+          cd "$GRADLE_PATH"
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           
@@ -58,5 +53,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: naksha-apk
-          path: "android/app/build/outputs/apk/debug/app-debug.apk"
+          path: "**/app-debug.apk"
           retention-days: 7
