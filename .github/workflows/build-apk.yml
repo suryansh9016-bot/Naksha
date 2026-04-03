@@ -6,21 +6,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 9
           
       - name: Build frontend (src/frontend)
         run: |
@@ -31,22 +31,20 @@ jobs:
           cp -r dist/* $GITHUB_WORKSPACE/www/
           
       - name: Setup Capacitor (Workspace Fix)
-        # Added -w to allow root-level installation and --ignore-scripts for speed
         run: |
           pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
           @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
           
       - name: Android Sync & Repair
         run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          # Use the newly installed CLI to sync
           npx cap sync android
         
       - name: Build debug APK (Hardened)
         run: |
           cd android
           chmod +x gradlew
+          # Using --no-daemon for stable memory management
           ./gradlew assembleDebug --no-daemon
           
       - name: Upload APK artifact
