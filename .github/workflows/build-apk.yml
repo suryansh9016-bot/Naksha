@@ -20,11 +20,10 @@ jobs:
           version: 8
       - name: Build frontend
         run: |
-          cd src/frontend
           pnpm install
           pnpm build
-          mkdir -p ../../www
-          cp -r dist/* ../../www/
+          mkdir -p www
+          cp -r dist/* www/
       - name: Install Capacitor & sync
         run: |
           npm install @capacitor/cli @capacitor/core @capacitor/android \
@@ -41,4 +40,3 @@ jobs:
           name: naksha-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
-          
