@@ -30,10 +30,10 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/
           
-      - name: Setup Capacitor (The Fix)
-        # We use --pnpm to force it to use your lockfile
+      - name: Setup Capacitor (Workspace Fix)
+        # Added -w to allow root-level installation and --ignore-scripts for speed
         run: |
-          pnpm add @capacitor/cli @capacitor/core @capacitor/android \
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
           @capacitor/local-notifications @capacitor/filesystem @capacitor/preferences
           
       - name: Android Sync & Repair
@@ -41,15 +41,12 @@ jobs:
           if [ ! -d "android" ]; then
             npx cap add android
           fi
-          # This forces Capacitor to recognize the new files
           npx cap sync android
         
       - name: Build debug APK (Hardened)
         run: |
           cd android
-          # This gives the factory permission to run the build engine
           chmod +x gradlew
-          # --no-daemon prevents memory errors on GitHub
           ./gradlew assembleDebug --no-daemon
           
       - name: Upload APK artifact
