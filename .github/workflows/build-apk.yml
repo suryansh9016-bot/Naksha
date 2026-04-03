@@ -30,8 +30,7 @@ jobs:
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
       - name: Force God-Mode & Icon Injection
         run: |
-          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android \
-          @capacitor/filesystem @capacitor/preferences @capacitor-community/native-settings
+          pnpm add -w @capacitor/cli @capacitor/core @capacitor/android @capacitor/filesystem
           
           rm -rf android
           npx cap add android
