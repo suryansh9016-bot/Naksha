@@ -24,37 +24,37 @@ jobs:
           
       - name: Build frontend
         run: |
-          # Finds package.json anywhere and builds the web files
           FRONTEND_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$FRONTEND_PATH"
           pnpm install
           pnpm build
-          # Forces a top-level www folder for Capacitor to find
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
           
-      - name: Setup & Sync Capacitor
+      - name: Force Rebuild Android Platform
         run: |
+          # 1. Install CLI
           pnpm add -w @capacitor/cli @capacitor/core @capacitor/android
-          # Syncs the web files we just built into the native project
+          
+          # 2. If 'android' folder exists, remove it to ensure a clean engine
+          rm -rf android
+          
+          # 3. Create a FRESH android project with your package details
+          npx cap add android
+          
+          # 4. Sync the web files
           npx cap sync android
         
-      - name: Build debug APK (The Ultimate Fix)
+      - name: Build debug APK
         run: |
-          # 1. Hunt down the gradlew file
-          GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
-          echo "Found Android engine at: $GRADLE_PATH"
-          
-          # 2. Navigate and execute
-          cd "$GRADLE_PATH"
+          # Now that we forced the creation, 'android' is guaranteed to be in the root
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           
-      - name: Upload APK artifact (Fail-Proof)
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: naksha-apk
-          # The double asterisk (**) tells GitHub to search every single folder for the APK
-          path: "**/app-debug.apk"
+          path: "android/app/build/outputs/apk/debug/app-debug.apk"
           retention-days: 7
-          if-no-files-found: error
