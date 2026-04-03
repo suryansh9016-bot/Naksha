@@ -1,4 +1,4 @@
-name: Build Naksha APK
+name: Build Naksha Native-Hybrid APK
 on: [push]
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -12,15 +12,11 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-      - name: Set up Node 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 9
-      - name: Build frontend
+      - name: Build Frontend
         run: |
           FRONTEND_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$FRONTEND_PATH"
@@ -28,38 +24,46 @@ jobs:
           pnpm build
           mkdir -p $GITHUB_WORKSPACE/www
           cp -r dist/* $GITHUB_WORKSPACE/www/ || cp -r build/* $GITHUB_WORKSPACE/www/
-      - name: Force God-Mode & Icon Injection
+      - name: Kotlin Bridge & API 34 Surgery
         run: |
           pnpm add -w @capacitor/cli @capacitor/core @capacitor/android @capacitor/filesystem @capacitor/local-notifications
-          
           rm -rf android
           npx cap add android
           
-          # ICON INJECTION
-          ICON_PATH=$(find . -name "icon-only.png" | head -n 1)
-          if [ -n "$ICON_PATH" ]; then
-            mkdir -p android/app/src/main/res/mipmap-mdpi
-            cp "$ICON_PATH" android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          fi
-          
-          # MANIFEST SURGERY: Storage + Notifications
+          # 1. NATIVE MANIFEST UPGRADE (API 34)
           MANIFEST=$(find android -name "AndroidManifest.xml" | grep "main")
           sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />' $MANIFEST
           sed -i '/<application/i \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' $MANIFEST
-          sed -i 's/<application/<application android:requestLegacyExternalStorage="true"/' $MANIFEST
+          
+          # 2. CONVERT JAVA TO KOTLIN BRIDGE
+          JAVA_FILE=$(find android -name "MainActivity.java")
+          KOTLIN_DIR=$(dirname "$JAVA_FILE")
+          PACKAGE_NAME=$(grep "package" "$JAVA_FILE" | head -n 1)
+          
+          cat <<EOF > "$KOTLIN_DIR/MainActivity.kt"
+          ${PACKAGE_NAME/;/}
+          import android.os.Bundle
+          import com.getcapacitor.BridgeActivity
+
+          class MainActivity : BridgeActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+              }
+          }
+          EOF
+          rm "$JAVA_FILE" # Remove the old Java bridge
           
           npx cap sync android
-      - name: Build debug APK
+      - name: Build Gradle 8.0+ APK
         run: |
           GRADLE_PATH=$(find . -name "gradlew" -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
           cd "$GRADLE_PATH"
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
-      - name: Upload APK artifact
+      - name: Upload Native APK
         uses: actions/upload-artifact@v4
         with:
-          name: naksha-apk
+          name: naksha-native-hybrid
           path: "**/app-debug.apk"
-          retention-days: 7
