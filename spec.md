@@ -1,74 +1,49 @@
-# Naksha — Final Native & UI Overhaul (Version 13)
+# Naksha — Android 14 Native-Hybrid Architecture Reconstruction
 
 ## Current State
 
-- App uses `@capacitor/filesystem`, `@capacitor/local-notifications`, `@capacitor/preferences` via dynamic imports with web fallbacks
-- `capacitorStorage.ts` handles file I/O; `capacitorNotifications.ts` handles timer alerts
-- `preferences.ts` is a shim that delegates to Capacitor Preferences on native or localStorage on web
-- `monarchStorage.ts` manages the master folder/file sync (Documents dir on native, File System Access API on web)
-- `App.tsx` has `BellStatusIcon` floating fixed top-left and `StorageStatusBadge` fixed top-right — both always visible
-- `SettingsScreen.tsx` has notification buttons, folder controls, and refresh logic
-- `PermissionManagerScreen.tsx` checks/requests both notification and storage permissions on startup
-- `capacitor.config.json` already has `webDir: "www"`; this is correct
-- `BackupContext.tsx` tracks sync status and exposes `triggerSync`, `triggerFullSync`, `linkFolderAndSync`
-- No automatic `Documents/NakshaData` directory creation on startup
-- Floating bell icon is always visible top-left; notification toggle is a floating button
-- Sync icon is large and always visible even when not saving
+- AndroidManifest.xml exists with basic Capacitor permissions, but:
+  - Missing `MANAGE_EXTERNAL_STORAGE` (required for SAF / All Files Access on Android 14)
+  - No SAF `<queries>` block for document picker intents
+  - READ/WRITE_EXTERNAL_STORAGE capped at `maxSdkVersion="29"` (pre-Android-14)
+  - No Kotlin `MainActivity.kt` — only the manifest and no Java/Kotlin source
+- No `build.gradle`, `settings.gradle`, or `gradle.properties` in android folder (skeleton only)
+- No `MainActivity.java` or `MainActivity.kt` present
+- No GitHub Actions workflow file exists in the repo
+- Frontend `main.tsx` renders React immediately without waiting for Capacitor bridge ready signal — causes 'Could not write' race condition on cold launch
+- `capacitor.config.json` and `capacitor.config.ts` both set `webDir: 'www'` and `androidScheme: 'https'` — correct
 
 ## Requested Changes (Diff)
 
 ### Add
-- Auto-create `Documents/NakshaData` directory on app launch using `Filesystem.mkdir` (via `capacitorStorage.ts`)
-- `ensureNakshaDataDir()` function that calls `Filesystem.mkdir({ path: 'NakshaData', directory: Directory.Documents, recursive: true })` on native startup
-- "Change Directory" button in Settings → Data Management that opens folder picker but defaults to NakshaData
-- Call `LocalNotifications.requestPermissions()` on first meaningful interaction (first timer start or first task creation)
-- All app state persistence routed through `@capacitor/preferences` (timer state, subjects, sessions, theme, username, etc.)
-- Sync icon in the top-right header (18px), only visible and pulsing when actively saving — hidden otherwise
-- Status bar at the bottom (above BottomNav) showing notification toggle and sync status, replacing the floating bell
+- `android/app/src/main/java/com/suryansh/naksha/MainActivity.kt` — Kotlin entry point using `ComponentActivity`, requests `POST_NOTIFICATIONS` at runtime on first launch, handles SAF All Files Access intent (`ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION`)
+- `android/build.gradle` — root Gradle build file targeting Gradle 8.2+, Kotlin plugin
+- `android/app/build.gradle` — app-level Gradle with `compileSdk 34`, `targetSdk 34`, `minSdk 22`, Kotlin/Capacitor dependencies
+- `android/settings.gradle` — module include with `pluginManagement` block for Gradle 8.2
+- `android/gradle.properties` — JVM heap, AndroidX opt-in, Kotlin incremental compilation
+- `android/gradle/wrapper/gradle-wrapper.properties` — Gradle 8.2 distribution URL
+- `.github/workflows/build-apk.yml` — Node 24/Java 21/pnpm 9 GitHub Actions workflow with FORCE_JAVASCRIPT_ACTIONS_TO_NODE24, reconstructs android folder cleanly, injects all permissions into manifest, generates icons, builds debug APK
+- `src/frontend/src/utils/nativeBridge.ts` — waits for `Capacitor.ready()` / `deviceready` event before resolving; used to gate React render
 
 ### Modify
-- `capacitorStorage.ts`: Add `ensureNakshaDataDir()` that creates `Documents/NakshaData` if missing; update `saveToDocuments` to write under `NakshaData/` subfolder on native
-- `App.tsx`: 
-  - Remove `BellStatusIcon` floating fixed element from top-left
-  - Move sync indicator into header area as a small 18px icon that only appears/pulses during save
-  - Remove `StorageStatusBadge` as a persistent always-on overlay
-  - Add compact `StatusBar` component at the bottom (above BottomNav) showing notification status + sync state
-  - Call `ensureNakshaDataDir()` on mount
-- `monarchStorage.ts`: Update native path to use `NakshaData/naksha_master_data.json` instead of flat `naksha_master_data.json`
-- `preferences.ts`: Ensure ALL app state keys (subjects, sessions, timer, theme, username, todos, chapters, topics, appearance) are written to Preferences on every save, not just username/theme
-- `capacitorNotifications.ts`: Ensure `LocalNotifications.requestPermissions()` is called lazily on first interaction, not just on permission manager screen
-- `SettingsScreen.tsx`: Move notification bell UI into a section (not floating), add "Change Directory" button next to "Select Folder", remove floating notification toggle reference
-- `BottomNav.tsx`: Ensure it renders above the new StatusBar or that z-index is correct
-- `capacitor.config.json`: Confirm `webDir: "www"` is set (already correct; add TS variant `capacitor.config.ts`)
+- `android/app/src/main/AndroidManifest.xml` — add `MANAGE_EXTERNAL_STORAGE`, SAF `<queries>` block for `ACTION_OPEN_DOCUMENT_TREE` + `ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION`, update `<activity>` to match Kotlin class, add `android:exported="true"` on receiver entries
+- `src/frontend/src/main.tsx` — defer React root creation until native bridge handshake completes (use `nativeBridge.ts` await before `ReactDOM.createRoot`)
+- `src/frontend/src/utils/capacitorStorage.ts` — no change needed (already uses `Directory.Documents`)
+- `capacitor.config.json` — add `Filesystem.iosScheme` and ensure `androidScheme: 'https'` is present; add `loggingBehavior: 'none'` for production
 
 ### Remove
-- Floating `BellStatusIcon` fixed position top-left element in `App.tsx`
-- `StorageStatusBadge` as always-on overlay — replaced by subtle header icon
-- Floating notification toggle button from left side of screen
-- Any UI elements that hover/overlay main action buttons (z-index audit)
+- Any `MainActivity.java` if it appears during Capacitor `cap add android` — replaced by `MainActivity.kt`
+- Legacy receiver declarations for Capacitor plugins not present in current plugin list
 
 ## Implementation Plan
 
-1. **`capacitorStorage.ts`**: Add `ensureNakshaDataDir()` that on native calls `Filesystem.mkdir({ path: 'NakshaData', directory: Directory.Documents, recursive: true })`. Update `saveToDocuments` to prefix path with `NakshaData/` on native.
-
-2. **`monarchStorage.ts`**: Update the native `syncToFolder` path to write to `NakshaData/naksha_master_data.json`.
-
-3. **`preferences.ts`**: Add a `syncAllStateToPreferences()` helper that writes all critical state keys (subjects, sessions, timerState, todos, themes, chapters, topics, projects) to Capacitor Preferences as serialized JSON. Called from `syncToLocalAndIDB`.
-
-4. **`capacitorNotifications.ts`**: Export `ensureNotificationPermission()` that calls `LocalNotifications.requestPermissions()` lazily and caches the result. Add `firstInteractionPermissionRequest()` to call this once on first timer start/task creation.
-
-5. **`App.tsx`**:
-   - Remove `BellStatusIcon` and `StorageStatusBadge` floating elements
-   - Add `HeaderSyncIndicator` — a tiny 18px `RefreshCw` icon that appears only when `status === 'saving'`, positioned inline in a thin top header bar; hidden at all other times
-   - Add `AppStatusBar` component at bottom above BottomNav: left side shows Bell icon (grey/red/green) with tap to enable notifications; right side shows current folder name or "Linked" text in muted small font
-   - Call `ensureNakshaDataDir()` on mount
-   - Audit and remove any `position: fixed` overlays that block action buttons
-
-6. **`SettingsScreen.tsx`**:
-   - Move notification enable/test buttons into a dedicated `Notifications` section card (already a section, confirm no floating elements)
-   - Add "Change Directory" button in Data Management section
-   - Remove any reference to a floating notification toggle
-
-7. **`capacitor.config.json`**: Already correct. Also create `capacitor.config.ts` as TypeScript variant for projects that prefer it.
-
-8. **CSS/z-index audit**: Ensure BottomNav and StatusBar z-indexes don't clash; no fixed elements with z > 100 except modals/toasts.
+1. Write `MainActivity.kt` using `ComponentActivity`, register `ActivityResultLauncher` for SAF `ACTION_OPEN_DOCUMENT_TREE`, request `POST_NOTIFICATIONS` at runtime with `ActivityResultContracts.RequestPermission`, check and launch `ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION` on first launch
+2. Write `android/build.gradle` (root) — Kotlin 1.9+, AGP 8.2+, Capacitor Gradle plugin
+3. Write `android/app/build.gradle` (app) — `compileSdk 34`, `targetSdk 34`, `minSdk 22`, Kotlin stdlib, Capacitor core + plugins
+4. Write `android/settings.gradle` with `pluginManagement` repository block for Gradle 8.2+
+5. Write `android/gradle.properties` with AndroidX enabled, heap settings
+6. Write `android/gradle/wrapper/gradle-wrapper.properties` pointing to Gradle 8.2 distribution
+7. Update `AndroidManifest.xml` — add `MANAGE_EXTERNAL_STORAGE`, SAF queries block, correct `<activity>` name `.MainActivity` (Kotlin class), exported flags
+8. Write `nativeBridge.ts` util — returns Promise that resolves immediately on web, listens for Capacitor `pluginsready` on native
+9. Update `main.tsx` — await `nativeBridge.ts` before calling `ReactDOM.createRoot`, preventing 'Could not write' errors
+10. Write updated `.github/workflows/build-apk.yml` — uses `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`, Node 24, Java 21, pnpm 9, tears down and rebuilds android folder, patches manifest with sed, syncs Capacitor, generates icons if present, builds with Gradle 8.2
